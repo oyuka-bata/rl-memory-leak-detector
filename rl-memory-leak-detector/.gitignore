@@ -1,0 +1,18 @@
+# Virtual environment
+venv/
+**/venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# C Binaries
+benchmarks/clean_app
+benchmarks/leaky_app
+benchmarks/spiky_app
+
+# Generated data traces
+traces/dataset/*.csv
+!traces/dataset/manifest.csv

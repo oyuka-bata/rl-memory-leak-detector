@@ -3,26 +3,19 @@
 #include <unistd.h>
 
 #define ITERATIONS 20
-#define ALLOC_SIZE 1024 // 1 KB
+#define ALLOC_SIZE 1024
 
 int main() {
     printf("[CLEAN] Starting clean memory allocation workload...\n");
 
     for (int i = 0; i < ITERATIONS; i++) {
-        // Allocate memory
         char *ptr = (char *)malloc(ALLOC_SIZE);
         if (ptr == NULL) {
             fprintf(stderr, "Memory allocation failed\n");
             return 1;
         }
-
-        // Simulate usage
         ptr[0] = 'A';
-
-        // Sleep briefly to simulate execution time
-        usleep(100000); // 100ms
-
-        // Properly free memory
+        usleep(100000);
         free(ptr);
         printf("[CLEAN] Iteration %d/%d: Allocated and freed %d bytes\n", i + 1, ITERATIONS, ALLOC_SIZE);
     }

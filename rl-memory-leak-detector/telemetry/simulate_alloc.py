@@ -17,7 +17,7 @@ PATTERN_CONFIGS = {
         "arrival": "poisson",
         "rate": 5.0,
         "size_range": (16, 4096),
-        "leak_fraction": 0.35,      # ~1/3 of allocations leak
+        "leak_fraction": 0.35,      
         "lifetime_range": (0.05, 2.0),
         "burst": False,
     },
@@ -75,17 +75,15 @@ class AllocSimulator:
         self.duration = duration
         self.pid = pid
         self.rng = random.Random(seed)
-        self._next_addr = 0x7f0000000000  # fake heap base
+        self._next_addr = 0x7f0000000000  
         self._wall_start = datetime.now()
 
     def _fake_address(self):
-        # advance a fake heap pointer so addresses look plausible/unique
         self._next_addr += self.rng.randint(32, 512)
         return self._next_addr
 
     def _sample_size(self):
         lo, hi = self.cfg["size_range"]
-        # log-uniform: realistic allocators skew toward small sizes
         return int(round(2 ** self.rng.uniform(
             __import__("math").log2(lo), __import__("math").log2(hi)
         )))
@@ -98,7 +96,6 @@ class AllocSimulator:
         return self.rng.random() < self.cfg["leak_fraction"]
 
     def _gen_arrival_times(self):
-        """Return a sorted list of allocation timestamps (seconds from t=0)."""
         times = []
         t = 0.0
 
@@ -110,17 +107,12 @@ class AllocSimulator:
                     times.append(t)
 
         elif self.cfg["arrival"] == "fixed":
-            # Evenly spaced allocations matching a real app's usleep() loop.
-            # n_events overrides duration-based generation when present, so
-            # counts match the real benchmark exactly (e.g. ITERATIONS=20).
             gap = 1.0 / self.cfg["rate"]
             n = self.cfg.get("n_events") or int(self.duration / gap)
             for i in range(n):
                 times.append(i * gap)
 
         elif self.cfg["arrival"] == "batch":
-            # Matches spiky_app.c: batches of N allocs, held, then freed,
-            # repeated for n_batches cycles.
             gap = self.cfg["inter_alloc_gap"]
             batch_gap = self.cfg["inter_batch_gap"]
             for cycle in range(self.cfg["n_batches"]):

@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 #define BATCH_SIZE 5
-#define SPIKE_SIZE 102400 // 100 KB
+#define SPIKE_SIZE 102400 
 #define CYCLES 3
 
 int main() {
@@ -19,12 +19,11 @@ int main() {
                 fprintf(stderr, "Allocation failed\n");
                 return 1;
             }
-            usleep(50000); // 50ms interval between burst allocations
+            usleep(50000); 
         }
 
         printf("[SPIKY] Cycle %d: Holding memory spike in active use...\n", cycle + 1);
-        sleep(1); // Held for 1 second (static heuristics often falsely flag this!)
-
+        sleep(1); 
         printf("[SPIKY] Cycle %d: Processing done. Freeing burst allocation...\n", cycle + 1);
         for (int i = 0; i < BATCH_SIZE; i++) {
             free(ptrs[i]);

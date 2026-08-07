@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""
-trace_alloc.py - eBPF-based malloc/free tracer (telemetry layer)
-
-Attaches uprobes to malloc()/free() in libc for a target PID and streams
-structured allocation events to a CSV file. Designed as the Week 1 telemetry
-layer for the RL memory leak detector project.
-
-Requires:
-    - Linux with BCC installed (sudo apt install python3-bpfcc  # or bpfcc-tools)
-    - Root privileges (uprobes require CAP_SYS_ADMIN / CAP_BPF)
-
-Usage:
-    sudo python3 trace_alloc.py --pid <target_pid> --out traces/run1.csv
-    sudo python3 trace_alloc.py --pid <target_pid> --out traces/run1.csv --duration 30
-"""
 
 import argparse
 import csv
@@ -28,19 +13,6 @@ except ImportError:
         "bcc not installed. On Debian/Ubuntu: sudo apt install python3-bpfcc bpfcc-tools"
     )
 
-# ---------------------------------------------------------------------------
-# BPF program (runs in-kernel)
-# ---------------------------------------------------------------------------
-# Strategy:
-#   1. On malloc() entry, stash the requested size keyed by thread id (tid).
-#      We can't know the returned address yet -- that only exists on return.
-#   2. On malloc() return (uretprobe), pull the stashed size, pair it with
-#      the returned address, and emit an "alloc" event. Also record the
-#      address -> size/timestamp mapping so free() can look it up later.
-#   3. On free() entry, look up the address in the live_allocs map. If found,
-#      emit a "free" event and remove it. If not found, we free()'d something
-#      allocated before the tracer attached -- silently skip it.
-BPF_PROGRAM = r"""
 #include <uapi/linux/ptrace.h>
 
 struct alloc_info_t {

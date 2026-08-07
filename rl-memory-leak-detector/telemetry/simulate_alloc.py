@@ -1,96 +1,65 @@
 #!/usr/bin/env python3
-"""
-simulate_alloc.py - synthetic memory allocation trace generator
-
-Produces CSV traces with the SAME schema as the real eBPF tracer
-(telemetry/trace_alloc.py), so downstream code (feature extraction,
-MemoryLeakEnv, agents) never needs to know whether the data is real
-or synthetic.
-
-Schema: timestamp_ns, wall_time, pid, tid, address, size, event_type
-
-Three built-in patterns:
-    clean  - steady allocations, always freed quickly
-    leaky  - steady allocations, a fraction NEVER freed (the leak)
-    spiky  - bursty, large allocations held a long time then freed
-             (a false-positive trap: looks leaky early, resolves late)
-
-Usage:
-    python3 simulate_alloc.py --pattern clean --out traces/clean.csv
-    python3 simulate_alloc.py --pattern leaky --out traces/leaky.csv --seed 42
-    python3 simulate_alloc.py --pattern spiky --out traces/spiky.csv --duration 60
-"""
-
 import argparse
 import csv
 import random
 from datetime import datetime, timedelta
 
-
-# ---------------------------------------------------------------------------
-# Pattern configs. Tune these to make traces more/less aggressive as needed.
-# All time units are seconds unless noted; converted to ns for the schema.
-# ---------------------------------------------------------------------------
 PATTERN_CONFIGS = {
     "clean": {
-        "arrival": "poisson",       # allocations arrive as a Poisson process
-        "rate": 5.0,                # avg allocations per second
-        "size_range": (16, 4096),   # bytes, log-uniform
-        "leak_fraction": 0.0,       # fraction of allocations never freed
-        "lifetime_range": (0.05, 2.0),  # seconds until free, if freed
+        "arrival": "poisson",       
+        "rate": 5.0,               
+        "size_range": (16, 4096),  
+        "leak_fraction": 0.0,       
+        "lifetime_range": (0.05, 2.0),  
         "burst": False,
     },
     "leaky": {
         "arrival": "poisson",
         "rate": 5.0,
         "size_range": (16, 4096),
-        "leak_fraction": 0.35,      # ~1/3 of allocations leak
+        "leak_fraction": 0.35,      
         "lifetime_range": (0.05, 2.0),
         "burst": False,
     },
     "spiky": {
-        "arrival": "bursty",        # idle periods punctuated by bursts
-        "rate": 2.0,                # baseline rate between bursts
-        "burst_rate": 30.0,         # allocations/sec during a burst
-        "burst_prob": 0.05,         # chance per tick a burst starts
+        "arrival": "bursty",        
+        "rate": 2.0,                
+        "burst_rate": 30.0,         
+        "burst_prob": 0.05,         
         "burst_duration": (0.5, 2.0),
-        "size_range": (65536, 1048576),  # large: 64KB-1MB
-        "leak_fraction": 0.0,       # nothing actually leaks
-        "lifetime_range": (3.0, 8.0),    # held a LONG time before freeing
+        "size_range": (65536, 1048576),  
+        "leak_fraction": 0.0,       
+        "lifetime_range": (3.0, 8.0),    
         "burst": True,
     },
-    # --- Variants matched to the actual compiled C benchmark apps, for
-    # apples-to-apples comparison once real traces exist. Use these when
-    # validating an agent trained on synthetic data against real traces
-    # of benchmarks/clean_app, leaky_app, spiky_app.
     "clean_app": {
         "arrival": "fixed",
-        "rate": 10.0,                # ~1 alloc / 100ms, matching usleep(100000)
-        "size_range": (1024, 1024),  # exactly ALLOC_SIZE
+        "rate": 10.0,                
+        "size_range": (1024, 1024),  
         "leak_fraction": 0.0,
-        "lifetime_range": (0.09, 0.11),  # freed almost immediately after alloc
+        "lifetime_range": (0.09, 0.11),  
         "burst": False,
-        "n_events": 20,               # matches ITERATIONS
+        "n_events": 20,               
     },
     "leaky_app": {
         "arrival": "fixed",
-        "rate": 6.67,                 # ~1 alloc / 150ms, matching usleep(150000)
-        "size_range": (2048, 2048),   # exactly ALLOC_SIZE
-        "leak_fraction": 1.0,         # EVERY allocation leaks - matches leaky_app.c
-        "lifetime_range": (0.09, 0.11),  # unused since leak_fraction=1.0
+        "rate": 6.67,                 
+        "size_range": (2048, 2048),   
+        "leak_fraction": 1.0,         
+        "lifetime_range": (0.09, 0.11),  
         "burst": False,
-        "n_events": 30,               # matches ITERATIONS
+        "n_events": 30,               
     },
     "spiky_app": {
         "arrival": "batch",
-        "batch_size": 5,               # matches BATCH_SIZE
-        "n_batches": 3,                # matches CYCLES
-        "inter_alloc_gap": 0.05,       # usleep(50000) between allocs in a batch
-        "hold_time": 1.0,              # sleep(1) hold before freeing
-        "inter_batch_gap": 0.2,        # usleep(200000) between cycles
-        "size_range": (102400, 102400),  # exactly SPIKE_SIZE
+        "batch_size": 5,               
+        "n_batches": 3,                
+        "inter_alloc_gap": 0.05,       
+        "hold_time": 1.0,              
+        "inter_batch_gap": 0.2,        
+        "size_range": (102400, 102400),  
         "leak_fraction": 0.0,
-        "lifetime_range": (1.0, 1.0),  # unused, hold_time drives this instead
+        "lifetime_range": (1.0, 1.0),  
         "burst": True,
     },
 }
@@ -106,17 +75,15 @@ class AllocSimulator:
         self.duration = duration
         self.pid = pid
         self.rng = random.Random(seed)
-        self._next_addr = 0x7f0000000000  # fake heap base
+        self._next_addr = 0x7f0000000000  
         self._wall_start = datetime.now()
 
     def _fake_address(self):
-        # advance a fake heap pointer so addresses look plausible/unique
         self._next_addr += self.rng.randint(32, 512)
         return self._next_addr
 
     def _sample_size(self):
         lo, hi = self.cfg["size_range"]
-        # log-uniform: realistic allocators skew toward small sizes
         return int(round(2 ** self.rng.uniform(
             __import__("math").log2(lo), __import__("math").log2(hi)
         )))
@@ -129,7 +96,6 @@ class AllocSimulator:
         return self.rng.random() < self.cfg["leak_fraction"]
 
     def _gen_arrival_times(self):
-        """Return a sorted list of allocation timestamps (seconds from t=0)."""
         times = []
         t = 0.0
 
@@ -141,17 +107,12 @@ class AllocSimulator:
                     times.append(t)
 
         elif self.cfg["arrival"] == "fixed":
-            # Evenly spaced allocations matching a real app's usleep() loop.
-            # n_events overrides duration-based generation when present, so
-            # counts match the real benchmark exactly (e.g. ITERATIONS=20).
             gap = 1.0 / self.cfg["rate"]
             n = self.cfg.get("n_events") or int(self.duration / gap)
             for i in range(n):
                 times.append(i * gap)
 
         elif self.cfg["arrival"] == "batch":
-            # Matches spiky_app.c: batches of N allocs, held, then freed,
-            # repeated for n_batches cycles.
             gap = self.cfg["inter_alloc_gap"]
             batch_gap = self.cfg["inter_batch_gap"]
             for cycle in range(self.cfg["n_batches"]):
@@ -180,7 +141,6 @@ class AllocSimulator:
         return times
 
     def run(self):
-        """Simulate allocations + frees, return list of event dicts sorted by time."""
         events = []
         alloc_times = self._gen_arrival_times()
         tid_pool = [self.pid + i for i in range(1, 4)]  # a few fake threads
@@ -202,7 +162,6 @@ class AllocSimulator:
 
             if not self._will_leak():
                 if is_batch_mode:
-                    # freed together at the end of the hold, not a random lifetime
                     batch_size = self.cfg["batch_size"]
                     batch_start = (idx // batch_size) * batch_size
                     batch_alloc_start_t = alloc_times[batch_start]
@@ -220,8 +179,7 @@ class AllocSimulator:
                         "size": size,
                         "event_type": "free",
                     })
-            # if it leaks, no free event is ever generated for this address
-
+            
         events.sort(key=lambda e: e["t"])
         return events
 

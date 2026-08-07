@@ -9,19 +9,16 @@ int main() {
     printf("[LEAKY] Starting leaky memory allocation workload...\n");
 
     for (int i = 0; i < ITERATIONS; i++) {
-        // Allocate memory without freeing
         char *ptr = (char *)malloc(ALLOC_SIZE);
         if (ptr == NULL) {
             fprintf(stderr, "Memory allocation failed\n");
             return 1;
         }
 
-        // Simulate usage (touching memory so OS backs it with real pages)
         ptr[0] = 'X';
 
         printf("[LEAKY] Iteration %d/%d: Leaked %d bytes at address %p\n", i + 1, ITERATIONS, ALLOC_SIZE, (void *)ptr);
         
-        // Sleep to mimic dynamic runtime allocation
         usleep(150000); // 150ms
     }
 

@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""
-generate_dataset.py - batch-generate a full labeled synthetic trace dataset
-
-Runs simulate_alloc.py's AllocSimulator across many seeds for each pattern,
-writing all traces into an output directory plus a manifest.csv that records
-which file is which pattern/seed -- so Week 3's train/held-out split has
-ground truth to work from without re-deriving it from filenames.
-
-Usage:
-    python3 generate_dataset.py --out-dir traces/dataset --n-seeds 25
-    python3 generate_dataset.py --out-dir traces/dataset --n-seeds 25 \
-        --patterns clean leaky spiky
-"""
-
 import argparse
 import csv
 import os

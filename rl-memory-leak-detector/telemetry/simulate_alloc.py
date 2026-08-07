@@ -1,36 +1,9 @@
 #!/usr/bin/env python3
-"""
-simulate_alloc.py - synthetic memory allocation trace generator
-
-Produces CSV traces with the SAME schema as the real eBPF tracer
-(telemetry/trace_alloc.py), so downstream code (feature extraction,
-MemoryLeakEnv, agents) never needs to know whether the data is real
-or synthetic.
-
-Schema: timestamp_ns, wall_time, pid, tid, address, size, event_type
-
-Three built-in patterns:
-    clean  - steady allocations, always freed quickly
-    leaky  - steady allocations, a fraction NEVER freed (the leak)
-    spiky  - bursty, large allocations held a long time then freed
-             (a false-positive trap: looks leaky early, resolves late)
-
-Usage:
-    python3 simulate_alloc.py --pattern clean --out traces/clean.csv
-    python3 simulate_alloc.py --pattern leaky --out traces/leaky.csv --seed 42
-    python3 simulate_alloc.py --pattern spiky --out traces/spiky.csv --duration 60
-"""
-
 import argparse
 import csv
 import random
 from datetime import datetime, timedelta
 
-
-# ---------------------------------------------------------------------------
-# Pattern configs. Tune these to make traces more/less aggressive as needed.
-# All time units are seconds unless noted; converted to ns for the schema.
-# ---------------------------------------------------------------------------
 PATTERN_CONFIGS = {
     "clean": {
         "arrival": "poisson",       # allocations arrive as a Poisson process
@@ -59,10 +32,6 @@ PATTERN_CONFIGS = {
         "lifetime_range": (3.0, 8.0),    # held a LONG time before freeing
         "burst": True,
     },
-    # --- Variants matched to the actual compiled C benchmark apps, for
-    # apples-to-apples comparison once real traces exist. Use these when
-    # validating an agent trained on synthetic data against real traces
-    # of benchmarks/clean_app, leaky_app, spiky_app.
     "clean_app": {
         "arrival": "fixed",
         "rate": 10.0,                # ~1 alloc / 100ms, matching usleep(100000)
@@ -180,7 +149,6 @@ class AllocSimulator:
         return times
 
     def run(self):
-        """Simulate allocations + frees, return list of event dicts sorted by time."""
         events = []
         alloc_times = self._gen_arrival_times()
         tid_pool = [self.pid + i for i in range(1, 4)]  # a few fake threads
@@ -202,7 +170,6 @@ class AllocSimulator:
 
             if not self._will_leak():
                 if is_batch_mode:
-                    # freed together at the end of the hold, not a random lifetime
                     batch_size = self.cfg["batch_size"]
                     batch_start = (idx // batch_size) * batch_size
                     batch_alloc_start_t = alloc_times[batch_start]
@@ -220,8 +187,7 @@ class AllocSimulator:
                         "size": size,
                         "event_type": "free",
                     })
-            # if it leaks, no free event is ever generated for this address
-
+            
         events.sort(key=lambda e: e["t"])
         return events
 

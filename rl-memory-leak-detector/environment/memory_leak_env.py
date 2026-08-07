@@ -12,17 +12,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from feature_extraction import parse_trace, extract_features
 
 RELATIVE_LIFESPAN_SENTINEL = -1.0  
-
 REWARD_TRUE_POSITIVE = 10.0    
 REWARD_FALSE_POSITIVE = -5.0   
-REWARD_FALSE_NEGATIVE = -10.0 
-EARLY_BONUS_MAX = 5.0         
+REWARD_FALSE_NEGATIVE = -10.0  
+EARLY_BONUS_MAX = 5.0          
 EARLY_BONUS_DECAY = 0.5        
 OBS_LOW = np.array([0.0, 0.0, 0.0, 0.0, RELATIVE_LIFESPAN_SENTINEL], dtype=np.float32)
 OBS_HIGH = np.array([1e6, 1e9, 1e4, 1.0, 1e4], dtype=np.float32)
 
 
 class MemoryLeakEnv(gym.Env):
+
     metadata = {"render_modes": []}
 
     def __init__(self, trace_paths, sample_interval=1.0, rate_window=2.0, shuffle_traces=True):
@@ -48,11 +48,12 @@ class MemoryLeakEnv(gym.Env):
         snapshots, ground_truth = extract_features(
             events, sample_interval=self.sample_interval, rate_window=self.rate_window
         )
-        snapshots.sort(key=lambda s: (s["snapshot_time"], s["address"]))
+        snapshots.sort(key=lambda s: (s["snapshot_time"], s["pid"], s["address"], s["alloc_instance"]))
 
         last_occurrence = {}
         for idx, s in enumerate(snapshots):
-            last_occurrence[s["address"]] = idx  
+            key = (s["pid"], s["address"], s["alloc_instance"])
+            last_occurrence[key] = idx  
 
         return snapshots, ground_truth, last_occurrence
 
@@ -68,10 +69,11 @@ class MemoryLeakEnv(gym.Env):
         ], dtype=np.float32)
 
     def _advance_to_next_valid_step(self):
-        """Skip steps for addresses already resolved (flagged earlier)."""
+        """Skip steps for allocations already resolved (flagged earlier)."""
         while self._pointer < len(self._steps):
-            addr = self._steps[self._pointer]["address"]
-            if addr not in self._resolved_addrs:
+            step = self._steps[self._pointer]
+            key = (step["pid"], step["address"], step["alloc_instance"])
+            if key not in self._resolved_addrs:
                 return True
             self._pointer += 1
         return False
@@ -102,12 +104,15 @@ class MemoryLeakEnv(gym.Env):
         }
         return obs, info
 
-    def _is_leak(self, addr):
-        return self._ground_truth[addr]["freed_at"] is None
+    def _is_leak(self, key):
+        gt = self._ground_truth[key]
+        return (gt["freed_at"] is None
+                and not gt["reclaimed"]
+                and not gt["superseded"])
 
     def _early_detection_bonus(self, relative_lifespan):
         if relative_lifespan is None:
-            return EARLY_BONUS_MAX  # no baseline yet -> earliest possible catch
+            return EARLY_BONUS_MAX  
         overshoot = max(relative_lifespan - 1.0, 0.0)
         return max(0.0, EARLY_BONUS_MAX - EARLY_BONUS_DECAY * overshoot)
 
@@ -118,25 +123,28 @@ class MemoryLeakEnv(gym.Env):
 
         current = self._steps[self._pointer]
         addr = current["address"]
+        key = (current["pid"], addr, current["alloc_instance"])
         current_idx = self._pointer
 
-        if action == 1: 
-            if self._is_leak(addr):
+        if action == 1:  
+            if self._is_leak(key):
                 bonus = self._early_detection_bonus(current["relative_lifespan"])
                 reward = REWARD_TRUE_POSITIVE + bonus
             else:
                 reward = REWARD_FALSE_POSITIVE
-            self._resolved_addrs.add(addr)
+            self._resolved_addrs.add(key)
         else:  
             reward = 0.0
-            if current_idx == self._last_occurrence.get(addr, -1) and self._is_leak(addr):
+            gt = self._ground_truth[key]
+            if (current_idx == self._last_occurrence.get(key, -1)
+                    and self._is_leak(key)):
                 reward = REWARD_FALSE_NEGATIVE
 
         self._pointer += 1
         has_next = self._advance_to_next_valid_step()
 
         terminated = not has_next
-        truncated = False  
+        truncated = False  # no time-limit truncation in this scaffold yet
 
         if has_next:
             next_step = self._steps[self._pointer]
@@ -155,5 +163,6 @@ class MemoryLeakEnv(gym.Env):
 
     def render(self):
         pass  
+
     def close(self):
         pass

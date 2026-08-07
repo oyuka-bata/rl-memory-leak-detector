@@ -1,32 +1,11 @@
 #!/usr/bin/env python3
-"""
-validate_features.py - Day 9: validate feature extraction against known trace patterns
-
-Runs feature_extraction.py against every trace in a dataset (per manifest.csv)
-and checks that the extracted features behave the way each pattern SHOULD:
-
-    clean  - unfreed_ratio decays toward ~0, no leaked addresses,
-             relative_lifespan for all addresses stays near ~1
-    leaky  - unfreed_ratio stabilizes at a nonzero level (~leak rate),
-             leaked addresses have relative_lifespan >> 1 (outliers)
-    spiky  - unfreed_ratio spikes early then decays (false-positive trap),
-             but NO addresses actually leak, and relative_lifespan for
-             addresses stays near ~1 (nothing is truly anomalous)
-
-This is a sanity check on the feature pipeline itself, run BEFORE any RL
-code touches these features -- if this fails, the environment/reward
-function built on top of it can't be trusted either.
-
-Usage:
-    python3 validate_features.py --dataset-dir traces/dataset
-"""
 
 import argparse
 import csv
 import os
 import sys
 
-from feature_extraction import parse_trace, extract_features
+from feature_extraction import parse_trace, extract_features, is_leak
 
 
 def load_manifest(dataset_dir):
@@ -43,9 +22,9 @@ def analyze_trace(csv_path, sample_interval=1.0, rate_window=2.0):
     if not snapshots:
         return None
 
-    leaked_addrs = {a for a, g in ground_truth.items() if g["freed_at"] is None}
+    leaked_keys = {k for k, g in ground_truth.items() if is_leak(g)}
     n_addrs = len(ground_truth)
-    leak_rate = len(leaked_addrs) / n_addrs if n_addrs else 0.0
+    leak_rate = len(leaked_keys) / n_addrs if n_addrs else 0.0
 
     max_t = snapshots[-1]["snapshot_time"]
     early = [s["unfreed_ratio"] for s in snapshots if s["snapshot_time"] <= max_t * 0.2]
@@ -53,14 +32,14 @@ def analyze_trace(csv_path, sample_interval=1.0, rate_window=2.0):
     early_ratio = sum(early) / len(early) if early else 0.0
     late_ratio = sum(late) / len(late) if late else 0.0
 
-    # last known relative_lifespan per address, split by leaked vs healthy
     last_snap = {}
     for s in snapshots:
-        last_snap[s["address"]] = s
-    leaked_rel = [last_snap[a]["relative_lifespan"] for a in leaked_addrs
-                  if a in last_snap and last_snap[a]["relative_lifespan"] is not None]
-    healthy_rel = [last_snap[a]["relative_lifespan"] for a, s in last_snap.items()
-                   if a not in leaked_addrs and s["relative_lifespan"] is not None]
+        key = (s["pid"], s["address"], s["alloc_instance"])
+        last_snap[key] = s
+    leaked_rel = [last_snap[k]["relative_lifespan"] for k in leaked_keys
+                  if k in last_snap and last_snap[k]["relative_lifespan"] is not None]
+    healthy_rel = [last_snap[k]["relative_lifespan"] for k, s in last_snap.items()
+                   if k not in leaked_keys and s["relative_lifespan"] is not None]
     avg_leaked_rel = sum(leaked_rel) / len(leaked_rel) if leaked_rel else None
     avg_healthy_rel = sum(healthy_rel) / len(healthy_rel) if healthy_rel else None
 
@@ -119,7 +98,6 @@ def run_validation(dataset_dir, sample_interval, rate_window):
 
 
 def check_expectations(results):
-    """Assert-style checks. Returns True if all patterns behave as expected."""
     all_ok = True
 
     def check(condition, message):

@@ -6,11 +6,11 @@ from datetime import datetime, timedelta
 
 PATTERN_CONFIGS = {
     "clean": {
-        "arrival": "poisson",       # allocations arrive as a Poisson process
-        "rate": 5.0,                # avg allocations per second
-        "size_range": (16, 4096),   # bytes, log-uniform
-        "leak_fraction": 0.0,       # fraction of allocations never freed
-        "lifetime_range": (0.05, 2.0),  # seconds until free, if freed
+        "arrival": "poisson",       
+        "rate": 5.0,               
+        "size_range": (16, 4096),  
+        "leak_fraction": 0.0,       
+        "lifetime_range": (0.05, 2.0),  
         "burst": False,
     },
     "leaky": {
@@ -22,44 +22,44 @@ PATTERN_CONFIGS = {
         "burst": False,
     },
     "spiky": {
-        "arrival": "bursty",        # idle periods punctuated by bursts
-        "rate": 2.0,                # baseline rate between bursts
-        "burst_rate": 30.0,         # allocations/sec during a burst
-        "burst_prob": 0.05,         # chance per tick a burst starts
+        "arrival": "bursty",        
+        "rate": 2.0,                
+        "burst_rate": 30.0,         
+        "burst_prob": 0.05,         
         "burst_duration": (0.5, 2.0),
-        "size_range": (65536, 1048576),  # large: 64KB-1MB
-        "leak_fraction": 0.0,       # nothing actually leaks
-        "lifetime_range": (3.0, 8.0),    # held a LONG time before freeing
+        "size_range": (65536, 1048576),  
+        "leak_fraction": 0.0,       
+        "lifetime_range": (3.0, 8.0),    
         "burst": True,
     },
     "clean_app": {
         "arrival": "fixed",
-        "rate": 10.0,                # ~1 alloc / 100ms, matching usleep(100000)
-        "size_range": (1024, 1024),  # exactly ALLOC_SIZE
+        "rate": 10.0,                
+        "size_range": (1024, 1024),  
         "leak_fraction": 0.0,
-        "lifetime_range": (0.09, 0.11),  # freed almost immediately after alloc
+        "lifetime_range": (0.09, 0.11),  
         "burst": False,
-        "n_events": 20,               # matches ITERATIONS
+        "n_events": 20,               
     },
     "leaky_app": {
         "arrival": "fixed",
-        "rate": 6.67,                 # ~1 alloc / 150ms, matching usleep(150000)
-        "size_range": (2048, 2048),   # exactly ALLOC_SIZE
-        "leak_fraction": 1.0,         # EVERY allocation leaks - matches leaky_app.c
-        "lifetime_range": (0.09, 0.11),  # unused since leak_fraction=1.0
+        "rate": 6.67,                 
+        "size_range": (2048, 2048),   
+        "leak_fraction": 1.0,         
+        "lifetime_range": (0.09, 0.11),  
         "burst": False,
-        "n_events": 30,               # matches ITERATIONS
+        "n_events": 30,               
     },
     "spiky_app": {
         "arrival": "batch",
-        "batch_size": 5,               # matches BATCH_SIZE
-        "n_batches": 3,                # matches CYCLES
-        "inter_alloc_gap": 0.05,       # usleep(50000) between allocs in a batch
-        "hold_time": 1.0,              # sleep(1) hold before freeing
-        "inter_batch_gap": 0.2,        # usleep(200000) between cycles
-        "size_range": (102400, 102400),  # exactly SPIKE_SIZE
+        "batch_size": 5,               
+        "n_batches": 3,                
+        "inter_alloc_gap": 0.05,       
+        "hold_time": 1.0,              
+        "inter_batch_gap": 0.2,        
+        "size_range": (102400, 102400),  
         "leak_fraction": 0.0,
-        "lifetime_range": (1.0, 1.0),  # unused, hold_time drives this instead
+        "lifetime_range": (1.0, 1.0),  
         "burst": True,
     },
 }
